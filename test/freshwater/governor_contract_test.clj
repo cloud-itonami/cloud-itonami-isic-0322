@@ -1,0 +1,120 @@
+(ns freshwater.governor-contract-test
+  "Contract tests for the FreshwaterAquacultureOperationsGovernor."
+  (:require [clojure.test :refer [deftest is]]
+            [freshwater.governor :as governor]
+            [freshwater.store :as store]))
+
+(deftest effect-mismatch-detection
+  (let [st (store/mem-store)
+        req {:op :log-pond-record :pond-id "pond-001"}
+        prop {:effect :commit}]
+    (is (some #(= :effect-mismatch (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest pond-verification-required
+  (let [st (store/mem-store)
+        req {:op :log-pond-record :pond-id "nonexistent"}
+        prop {:effect :propose :value {}}]
+    (is (some #(= :pond-not-found (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest pond-must-be-active
+  (let [inactive-pond {:pond-id "pond-001" :status :inactive}
+        st (store/mem-store {:fixtures {"pond-001" inactive-pond}})
+        req {:op :log-pond-record :pond-id "pond-001"}
+        prop {:effect :propose :value {}}]
+    (is (some #(= :pond-inactive (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest only-propose-effects-allowed
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :log-pond-record :pond-id "pond-001"}
+        prop {:effect :commit :value {}}]
+    (is (some #(= :non-propose-effect (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest administer-treatment-blocked
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :administer-treatment :pond-id "pond-001"}
+        prop {:effect :propose :value {:treatment "antibiotic"}}]
+    (is (some #(= :blocked-operation (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest control-feeding-equipment-blocked
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :control-feeding-equipment :pond-id "pond-001"}
+        prop {:effect :propose :value {:action "start"}}]
+    (is (some #(= :blocked-operation (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest control-harvest-equipment-blocked
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :control-harvest-equipment :pond-id "pond-001"}
+        prop {:effect :propose :value {:action "start"}}]
+    (is (some #(= :blocked-operation (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest unknown-op-rejected-by-closed-allowlist
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :make-up-an-operation :pond-id "pond-001"}
+        prop {:effect :propose :value {}}]
+    (is (some #(= :unknown-operation (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest forbidden-fields-blocked
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :log-pond-record :pond-id "pond-001"}
+        prop {:effect :propose :value {:pond-id "pond-002"}}]
+    (is (some #(= :forbidden-field (:rule %))
+              (:violations (governor/check req nil prop st))))))
+
+(deftest health-concern-triggers-escalation
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :flag-health-concern :pond-id "pond-001"}
+        prop {:effect :propose :value {:concern "low-dissolved-oxygen"}}
+        verdict (governor/check req nil prop st)]
+    (is (:escalate? verdict))
+    (is (some #(= :health-concern-escalation (:rule %)) (:soft-flags verdict)))))
+
+(deftest high-cost-supply-escalates
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :order-supplies :pond-id "pond-001"}
+        prop {:effect :propose :value {:item "feed" :estimated-cost 15000}}
+        verdict (governor/check req nil prop st)]
+    (is (:escalate? verdict))
+    (is (some #(= :high-cost-escalation (:rule %)) (:soft-flags verdict)))))
+
+(deftest low-confidence-escalates
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :log-pond-record :pond-id "pond-001"}
+        prop {:effect :propose :value {} :confidence 0.4}
+        verdict (governor/check req nil prop st)]
+    (is (:escalate? verdict))))
+
+(deftest clean-proposal-passes
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :log-pond-record :pond-id "pond-001"}
+        prop {:effect :propose :value {:count 1000} :confidence 0.95}
+        verdict (governor/check req nil prop st)]
+    (is (:ok? verdict))
+    (is (not (:hard? verdict)))
+    (is (not (:escalate? verdict)))))
+
+(deftest schedule-farm-operation-clean-passes
+  (let [active-pond {:pond-id "pond-001" :status :active}
+        st (store/mem-store {:fixtures {"pond-001" active-pond}})
+        req {:op :schedule-farm-operation :pond-id "pond-001"}
+        prop {:effect :propose :value {:type :feeding} :confidence 0.9}
+        verdict (governor/check req nil prop st)]
+    (is (:ok? verdict))
+    (is (not (:hard? verdict)))))
