@@ -66,13 +66,13 @@ JVM/nbb -- no JVM-only interop).
 
 ```bash
 # Install (workspace already has langgraph-clj at ../../kotoba-lang/langgraph)
-clojure -M:test
+kbb -M:test
 
 # Run demo
-clojure -M:dev:run
+kbb -M:dev:run
 
 # Lint
-clojure -M:lint
+kbb -M:lint
 ```
 
 ## Files
