@@ -6,8 +6,8 @@ tests, documentation, and open business blueprint.
 ## Development
 
 ```bash
-clojure -M:dev:test
-clojure -M:lint
+kbb -M:dev:test
+kbb -M:lint
 ```
 
 Keep changes small and include tests for governor, store, or operation-graph
