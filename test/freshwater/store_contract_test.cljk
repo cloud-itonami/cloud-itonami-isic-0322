@@ -1,6 +1,6 @@
 (ns freshwater.store-contract-test
   "Contract tests for the freshwater aquaculture Store."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [freshwater.store :as store]))
 
 (deftest pond-lookup

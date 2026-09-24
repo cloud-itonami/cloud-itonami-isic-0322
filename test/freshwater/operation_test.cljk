@@ -1,7 +1,7 @@
 (ns freshwater.operation-test
   "Integration tests: drive the compiled langgraph-clj OperationActor
   end-to-end (not just the governor/store units in isolation)."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [langgraph.graph :as g]
             [freshwater.store :as store]
             [freshwater.operation :as operation]))
